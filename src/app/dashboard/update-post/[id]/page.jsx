@@ -2,10 +2,7 @@
 
 import { useUser } from "@clerk/nextjs";
 import { Alert, Button, FileInput, Select, TextInput } from "flowbite-react";
-
 import dynamic from "next/dynamic";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
 // https://dev.to/a7u/reactquill-with-nextjs-478b
 import "react-quill-new/dist/quill.snow.css";
@@ -16,21 +13,47 @@ import {
   ref,
   uploadBytesResumable,
 } from "firebase/storage";
-import { app } from "@/firebase";
-
+import { app } from "../../../../firebase";
+import { useEffect, useState } from "react";
 import { CircularProgressbar } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
+import { useRouter, usePathname } from "next/navigation";
 
-export default function CreatePostPage() {
+export default function UpdatePost() {
   const { isSignedIn, user, isLoaded } = useUser();
-
   const [file, setFile] = useState(null);
   const [imageUploadProgress, setImageUploadProgress] = useState(null);
   const [imageUploadError, setImageUploadError] = useState(null);
   const [formData, setFormData] = useState({});
   const [publishError, setPublishError] = useState(null);
   const router = useRouter();
-  console.log(formData);
+  const pathname = usePathname();
+  const postId = pathname.split("/").pop();
+  useEffect(() => {
+    const fetchPost = async () => {
+      try {
+        const res = await fetch("/api/post/get", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            postId: postId,
+          }),
+        });
+        const data = await res.json();
+        console.log(data);
+        if (res.ok) {
+          setFormData(data.posts[0]);
+        }
+      } catch (error) {
+        console.log(error.message);
+      }
+    };
+    if (isSignedIn && user?.publicMetadata?.isAdmin) {
+      fetchPost();
+    }
+  }, [postId, user?.publicMetadata?.isAdmin, isSignedIn]);
 
   const handleUpdloadImage = async () => {
     try {
@@ -72,14 +95,15 @@ export default function CreatePostPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/post/create", {
-        method: "POST",
+      const res = await fetch("/api/post/update", {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           ...formData,
           userMongoId: user.publicMetadata.userMongoId,
+          postId: postId,
         }),
       });
       const data = await res.json();
@@ -96,7 +120,10 @@ export default function CreatePostPage() {
     }
   };
 
+  // get the initial post data using useEffect and fetch
+
   if (!isLoaded) {
+    // Handle loading state however you like
     return null;
   }
 
@@ -104,7 +131,7 @@ export default function CreatePostPage() {
     return (
       <div className="p-3 max-w-3xl mx-auto min-h-screen">
         <h1 className="text-center text-3xl my-7 font-semibold">
-          Create a post
+          Update a post
         </h1>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4 sm:flex-row justify-between">
@@ -113,6 +140,7 @@ export default function CreatePostPage() {
               placeholder="Title"
               required
               id="title"
+              defaultValue={formData.title}
               className="flex-1"
               onChange={(e) =>
                 setFormData({ ...formData, title: e.target.value })
@@ -122,6 +150,7 @@ export default function CreatePostPage() {
               onChange={(e) =>
                 setFormData({ ...formData, category: e.target.value })
               }
+              value={formData.category}
             >
               <option value="uncategorized">Select a category</option>
               <option value="javascript">JavaScript</option>
@@ -155,7 +184,6 @@ export default function CreatePostPage() {
               )}
             </Button>
           </div>
-
           {imageUploadError && (
             <Alert color="failure">{imageUploadError}</Alert>
           )}
@@ -166,27 +194,32 @@ export default function CreatePostPage() {
               className="w-full h-72 object-cover"
             />
           )}
-
           <ReactQuill
             theme="snow"
             placeholder="Write something..."
             className="h-72 mb-12"
             required
+            value={formData.content}
             onChange={(value) => {
               setFormData({ ...formData, content: value });
             }}
           />
           <Button type="submit" gradientDuoTone="purpleToPink">
-            Publish
+            Update
           </Button>
+          {publishError && (
+            <Alert className="mt-5" color="failure">
+              {publishError}
+            </Alert>
+          )}
         </form>
       </div>
     );
-  } else {
-    return (
-      <h1 className="text-center text-3xl my-7 font-semibold">
-        You are not authorized to view this page
-      </h1>
-    );
   }
+
+  return (
+    <h1 className="text-center text-3xl my-7 font-semibold min-h-screen">
+      You need to be an admin to update a post
+    </h1>
+  );
 }
